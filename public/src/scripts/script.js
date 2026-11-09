@@ -69,7 +69,7 @@ async function renderizeImoveis() {
     row.insertCell().appendChild(link);
 
     row.insertCell().textContent = Bairro;
-    row.insertCell().textContent = Valor.toLocaleString("pt-BR", {
+    row.insertCell().textContent = Number(Valor).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
