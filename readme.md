@@ -1,6 +1,6 @@
-# Majesto — Opções Exclusivas para Parceiros
+# Majesto — Site de Parcerias
 
-Plataforma de listagem de imóveis para corretores parceiros. Interface mobile-first com backend Node.js + SQLite e entrega via Cloudflare Tunnel.
+Plataforma de listagem de imóveis para corretores parceiros. Interface mobile-first com backend Node.js + PostgreSQL e entrega via Cloudflare Tunnel.
 
 ---
 
@@ -13,10 +13,10 @@ majesto-parcerias.com.br
         │
   server.js (Express :3000)
         │
-   ┌────┴────┐
-   │         │
-public/   imoveis.db
-(static)  (SQLite)
+   ┌────┴────────┐
+   │             │
+public/      PostgreSQL
+(static)  (public.imoveis)
 ```
 
 ### Stack
@@ -24,7 +24,7 @@ public/   imoveis.db
 | Camada | Tecnologia |
 |---|---|
 | Servidor | Node.js + Express |
-| Banco de dados | SQLite via better-sqlite3 |
+| Banco de dados | PostgreSQL via `pg` (Connection Pool) |
 | Fotos | Google Drive API v3 |
 | Exposição pública | Cloudflare Tunnel |
 | Processo | PM2 |
@@ -34,7 +34,7 @@ public/   imoveis.db
 ## Estrutura de Pastas
 
 ```
-planilha-de-opcoes/
+site-de-parcerias/
 ├── server.js                          # Servidor Express + rotas da API
 ├── package.json
 ├── .gitignore
@@ -43,17 +43,18 @@ planilha-de-opcoes/
     ├── index.html
     └── src/
         ├── scripts/
-        │   ├── data.js                # Fetch da API + transformação
-        │   ├── state.js               # Gerenciamento de estado e filtros
+        │   ├── app.js                 # Orquestração principal
         │   ├── components.js          # Componentes UI + carousel de fotos
-        │   ├── utils.js               # Funções utilitárias
-        │   └── app.js                 # Orquestração principal
+        │   ├── data.js                # Fetch da API + transformação
+        │   ├── db.js                  # Pool de conexão PostgreSQL
+        │   ├── state.js               # Gerenciamento de estado e filtros
+        │   └── utils.js               # Funções utilitárias
         ├── styles/
-        │   ├── variables.css          # Design tokens
         │   ├── base.css               # Reset e tipografia
         │   ├── components.css         # Estilos dos componentes
         │   ├── layout.css             # Grid e layout
-        │   └── responsive.css         # Media queries
+        │   ├── responsive.css         # Media queries
+        │   └── variables.css          # Design tokens
         └── assets/
             └── images/
                 └── logo.png
@@ -65,7 +66,7 @@ planilha-de-opcoes/
 
 ### `GET /api/imoveis`
 
-Retorna todos os imóveis com `ImovelStatus = 'Disponível'`, ordenados por bairro e nome.
+Retorna todos os imóveis com `imovelstatus = 'Disponível'`, ordenados por bairro e nome.
 
 **Resposta:**
 ```json
@@ -74,7 +75,7 @@ Retorna todos os imóveis com `ImovelStatus = 'Disponível'`, ordenados por bair
     "ImovelID": 1,
     "NomeImovel": "Acquabella",
     "Bairro": "Barra Da Tijuca",
-    "Valor": 3200000,
+    "Valor": "3200000.00",
     "Tipologia": "Apartamento",
     "Quartos": 4,
     "LinkPublico": "https://drive.google.com/..."
@@ -84,7 +85,7 @@ Retorna todos os imóveis com `ImovelStatus = 'Disponível'`, ordenados por bair
 
 ### `GET /api/imoveis/:id/fotos`
 
-Busca as fotos do imóvel diretamente na pasta do Google Drive via API. Resultado cacheado em memória por sessão.
+Busca as fotos do imóvel diretamente na pasta do Google Drive via API v3 com cache TTL em memória (12 horas).
 
 **Resposta:**
 ```json
@@ -95,43 +96,52 @@ Busca as fotos do imóvel diretamente na pasta do Google Drive via API. Resultad
 
 ---
 
-## Schema do Banco
+## Schema do Banco (PostgreSQL)
+
+O banco de dados relacional utiliza o PostgreSQL:
 
 ```sql
-Imoveis         -- dados principais, status, valor, tipologia
-Bairros         -- nome e zona (Oeste, Sul, Norte, Sudoeste)
-Condominios     -- nome, endereço, infraestrutura
-Fotos           -- caminho local das imagens
-Auditoria       -- log automático de INSERT e UPDATE via triggers
+imoveis         -- dados principais, status, valor, tipologia, link público
+bairros         -- nome e zona (Oeste, Sul, Norte, etc.)
+condominios     -- nome, endereço, infraestrutura
 ```
 
-`ImovelStatus` aceita: `Disponível`, `Vendido`, `Alugado`, `Retirado de Venda`.  
-Imóveis fora de `Disponível` são excluídos automaticamente da API.
+Imóveis com `imovelstatus` diferente de `Disponível` são excluídos automaticamente da API.
 
 ---
 
 ## Como rodar localmente
 
 ```bash
-git clone https://github.com/PedroCrqs/planilha-de-opcoes.git
-cd planilha-de-opcoes
+git clone git@github.com:PedroCrqs/site-de-parcerias.git
+cd site-de-parcerias
 npm install
+```
+
+Crie o arquivo `.env` com a string de conexão:
+```env
+PORT=3000
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/imoveis
+```
+
+Certifique-se de posicionar as credenciais da Service Account do Google Drive no arquivo `planilha-de-opcoes-dbe8155b12ce.json`.
+
+Inicie a aplicação:
+```bash
 node server.js
 ```
 
 Acesse `http://localhost:3000`.
 
-O arquivo `imoveis.db` deve estar em `../imoveis-database/data/imoveis.db` em relação ao projeto, ou ajuste o caminho em `server.js`.
-
 ---
 
 ## Deploy (produção)
 
-O servidor roda numa máquina local com Linux Debian 12, exposta via Cloudflare Tunnel sem abertura de portas no roteador.
+O servidor roda numa máquina local/servidor Linux Debian 12, exposta via Cloudflare Tunnel sem abertura de portas no roteador.
 
 ```bash
 # Subir o servidor com PM2
-pm2 start server.js --name planilha-de-opcoes
+pm2 start server.js --name site-de-parcerias
 pm2 save
 pm2 startup
 
@@ -160,8 +170,7 @@ ingress:
 - Busca global com debounce (nome, bairro, tipo, valor, quartos)
 - Filtros rápidos por tipo (Casa, Apartamento, Cobertura) e quantidade de quartos
 - Ordenação por destaque, menor valor, maior valor e nome A-Z
-- Carousel de fotos carregadas diretamente do Google Drive
-- Cache de fotos em memória por sessão
+- Carousel de fotos carregadas diretamente do Google Drive com cache TTL de 12 horas
 - Interface mobile-first, acessível (ARIA, semântica HTML5, contraste WCAG 2.1)
 - Imóveis indisponíveis removidos automaticamente pela API
 
@@ -171,9 +180,8 @@ ingress:
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `PORT` | `3000` | Porta do servidor |
-
-O caminho do banco e a chave do Google Drive estão configurados diretamente em `server.js`. Em produção, considere movê-los para um `.env`.
+| `PORT` | `3000` | Porta do servidor HTTP |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/imoveis` | String de conexão com o PostgreSQL |
 
 ---
 
@@ -182,9 +190,9 @@ O caminho do banco e a chave do Google Drive estão configurados diretamente em 
 ```
 feature/*  →  refactor/*
                   │
-                 dev      ← testes e tags de versão
+                 dev      ← testes e staging
                   │
-                main      ← produção
+                main      ← produção (releases e tags)
 ```
 
 ---
